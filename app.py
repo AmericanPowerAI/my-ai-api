@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 from model import ai_model
 
 app = FastAPI()
@@ -14,25 +15,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Example secret API key (change this to your real one or load from env)
+# Secret API keys for devs/engineers
 VALID_API_KEYS = {"your-secret-key"}
 
-def validate_api_key(api_key: str):
-    if api_key not in VALID_API_KEYS:
+# Only check if one is provided
+def validate_api_key(api_key: Optional[str]):
+    if api_key is not None and api_key not in VALID_API_KEYS:
         raise HTTPException(status_code=403, detail="Invalid API key")
 
-# Request schemas
+# Request schemas with optional api_key
 class LearnRequest(BaseModel):
     fact: str
-    api_key: str
+    api_key: Optional[str] = None
 
 class TrainRequest(BaseModel):
     text: str
-    api_key: str
+    api_key: Optional[str] = None
 
 class QuestionRequest(BaseModel):
     question: str
-    api_key: str
+    api_key: Optional[str] = None
 
 # Routes
 @app.get("/")
