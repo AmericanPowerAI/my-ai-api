@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from model import ai_model
+from user_auth import auth_router  # 👈 NEW: Import auth router
 
 app = FastAPI()
 
@@ -44,17 +45,20 @@ def read_root():
 @app.post("/learn")
 def learn_fact(req: LearnRequest):
     validate_api_key(req.api_key)
-    ai_model.learn(req.fact)
+    ai_model.learn(req.api_key or "public", req.fact)
     return {"status": "Learned", "fact": req.fact}
 
 @app.post("/train")
 def train_model(req: TrainRequest):
     validate_api_key(req.api_key)
-    ai_model.train(req.text)
+    ai_model.train(req.api_key or "public", req.text)
     return {"status": "Trained", "text": req.text}
 
 @app.post("/ask")
 def ask_question(req: QuestionRequest):
     validate_api_key(req.api_key)
-    answer = ai_model.answer(req.question)
+    answer = ai_model.answer(req.api_key or "public", req.question)
     return {"answer": answer}
+
+# Include user authentication and account system
+app.include_router(auth_router, prefix="/auth")  # 👈 NEW: Add auth routes
