@@ -1,94 +1,64 @@
-# user_auth.py
-
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, EmailStr
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from typing import Optional
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from model import ai_model
+from user_auth import auth_router
 
-# Fake database (replace with real DB like PostgreSQL)
-users_db = {}
+app = FastAPI()
 
-# JWT Secret (move this to an environment variable for production)
-SECRET_KEY = "supersecretkey"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+# Allow CORS from any domain (safe for dev, change "*" to your domain later)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# OAuth2 scheme
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+# Secret API keys for devs/engineers
+VALID_API_KEYS = {"your-secret-key"}
 
-# User model
-class User(BaseModel):
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    password: str
-    tier: str = "free"  # default tier: free
+# Only check if one is provided
+def validate_api_key(api_key: Optional[str]):
+    if api_key is not None and api_key not in VALID_API_KEYS:
+        raise HTTPException(status_code=403, detail="Invalid API key")
 
-class UserInDB(User):
-    hashed_password: str
+# Request schemas with optional api_key
+class LearnRequest(BaseModel):
+    fact: str
+    api_key: Optional[str] = None
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+class TrainRequest(BaseModel):
+    text: str
+    api_key: Optional[str] = None
 
-class TokenData(BaseModel):
-    email: Optional[str] = None
-    tier: Optional[str] = "free"
+class QuestionRequest(BaseModel):
+    question: str
+    api_key: Optional[str] = None
 
-auth_router = APIRouter()
+# Routes
+@app.get("/")
+def read_root():
+    return {"message": "Nero AI is running."}
 
-# Utilities
-def fake_hash_password(password: str):
-    return "hashed_" + password
+@app.post("/learn")
+def learn_fact(req: LearnRequest):
+    validate_api_key(req.api_key)
+    ai_model.learn(req.fact)
+    return {"status": "Learned", "fact": req.fact}
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+@app.post("/train")
+def train_model(req: TrainRequest):
+    validate_api_key(req.api_key)
+    ai_model.train(req.text)
+    return {"status": "Trained", "text": req.text}
 
-# Registration endpoint
-@auth_router.post("/register")
-def register(user: User):
-    identifier = user.email or user.phone
-    if not identifier:
-        raise HTTPException(status_code=400, detail="Email or phone required.")
-    if identifier in users_db:
-        raise HTTPException(status_code=400, detail="User already exists.")
+@app.post("/ask")
+def ask_question(req: QuestionRequest):
+    validate_api_key(req.api_key)
+    answer = ai_model.answer(req.question)
+    return {"answer": answer}
 
-    hashed_pw = fake_hash_password(user.password)
-    users_db[identifier] = {"email": user.email, "phone": user.phone, "hashed_password": hashed_pw, "tier": user.tier}
-    return {"message": "User registered successfully."}
-
-# Login endpoint
-@auth_router.post("/token", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user_dict = users_db.get(form_data.username)
-    if not user_dict:
-        raise HTTPException(status_code=400, detail="User not found.")
-    if fake_hash_password(form_data.password) != user_dict["hashed_password"]:
-        raise HTTPException(status_code=400, detail="Incorrect password.")
-
-    access_token = create_access_token(
-        data={"sub": form_data.username, "tier": user_dict["tier"]},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-# Dependency to get current user
-def get_current_user(token: str = Depends(oauth2_scheme)) -> TokenData:
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        tier: str = payload.get("tier")
-        if username is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return TokenData(email=username, tier=tier)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-# Example protected route
-@auth_router.get("/me")
-def read_users_me(current_user: TokenData = Depends(get_current_user)):
-    return {"user": current_user.email, "tier": current_user.tier}
+# Include the auth router from user_auth.py
+app.include_router(auth_router)
