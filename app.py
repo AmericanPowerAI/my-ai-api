@@ -1,13 +1,22 @@
 from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from model import ai_model
 
 app = FastAPI()
 
-# Example secret API key (you can later store this in an environment variable)
+# Allow CORS from any domain (safe for dev, change "*" to your domain later)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Example secret API key (change this to your real one or load from env)
 VALID_API_KEYS = {"your-secret-key"}
 
-# Validate API key with every request
 def validate_api_key(api_key: str):
     if api_key not in VALID_API_KEYS:
         raise HTTPException(status_code=403, detail="Invalid API key")
