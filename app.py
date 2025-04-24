@@ -1,47 +1,49 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Request, HTTPException, Header
+from pydantic import BaseModel
 from model import ai_model
 
-app = Flask(__name__)
+app = FastAPI()
 
-@app.route("/")
-def index():
-    return "🤖 AI API is running."
+# Example secret API key (you can later store this in an environment variable)
+VALID_API_KEYS = {"your-secret-key"}
 
-@app.route("/learn", methods=["POST"])
-def learn():
-    data = request.get_json()
-    api_key = data.get("api_key")
-    fact = data.get("fact")
+# Validate API key with every request
+def validate_api_key(api_key: str):
+    if api_key not in VALID_API_KEYS:
+        raise HTTPException(status_code=403, detail="Invalid API key")
 
-    if not api_key or not fact:
-        return jsonify({"error": "Missing api_key or fact"}), 400
+# Request schemas
+class LearnRequest(BaseModel):
+    fact: str
+    api_key: str
 
-    ai_model.learn(api_key, fact)
-    return jsonify({"message": "Fact learned."})
+class TrainRequest(BaseModel):
+    text: str
+    api_key: str
 
-@app.route("/train", methods=["POST"])
-def train():
-    data = request.get_json()
-    api_key = data.get("api_key")
-    text = data.get("text")
+class QuestionRequest(BaseModel):
+    question: str
+    api_key: str
 
-    if not api_key or not text:
-        return jsonify({"error": "Missing api_key or text"}), 400
+# Routes
+@app.get("/")
+def read_root():
+    return {"message": "Nero AI is running."}
 
-    ai_model.train(api_key, text)
-    return jsonify({"message": "Text trained."})
+@app.post("/learn")
+def learn_fact(req: LearnRequest):
+    validate_api_key(req.api_key)
+    ai_model.learn(req.fact)
+    return {"status": "Learned", "fact": req.fact}
 
-@app.route("/answer", methods=["POST"])
-def answer():
-    data = request.get_json()
-    api_key = data.get("api_key")
-    question = data.get("question")
+@app.post("/train")
+def train_model(req: TrainRequest):
+    validate_api_key(req.api_key)
+    ai_model.train(req.text)
+    return {"status": "Trained", "text": req.text}
 
-    if not api_key or not question:
-        return jsonify({"error": "Missing api_key or question"}), 400
-
-    answer = ai_model.answer(api_key, question)
-    return jsonify({"answer": answer})
-
-if __name__ == "__main__":
-    app.run(debug=True)
+@app.post("/ask")
+def ask_question(req: QuestionRequest):
+    validate_api_key(req.api_key)
+    answer = ai_model.answer(req.question)
+    return {"answer": answer}
